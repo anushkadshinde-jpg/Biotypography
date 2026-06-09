@@ -68,6 +68,30 @@
       outline: none;
       transition: border-color 0.2s;
     }
+    
+    input[type="file"] {
+      width: 100%;
+      font-size: 0.8rem;
+      color: #ccc;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+    
+    /* File input styling */
+    input[type="file"]::file-selector-button {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-right: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    input[type="file"]::file-selector-button:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
     input[type="text"]:focus { border-color: var(--accent); }
 
     input[type="range"] {
@@ -77,18 +101,31 @@
     }
     
     span.val { font-family: monospace; color: var(--accent); }
+    
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+      margin: 15px 0;
+    }
   </style>
 </head>
 <body>
 
   <div id="ui-panel">
-    <h1>Biotypo</h1>
+    <h1>Physarum Model</h1>
     <p class="subtitle">Interactive Slime Mold Simulation</p>
 
     <div class="control-group">
       <label for="textInput">Seed Text</label>
       <input type="text" id="textInput" value="SLIME">
     </div>
+    
+    <div class="control-group">
+      <label for="imageUpload">...or Upload Image (PNG/SVG)</label>
+      <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/svg+xml">
+    </div>
+
+    <div class="divider"></div>
 
     <div class="control-group">
       <label>Decay (Fade)<span class="val" id="decayVal">0.96</span></label>
@@ -125,6 +162,7 @@
 
     // Dynamic Variables linked to UI
     let textSeed = "SLIME";
+    let imageSeed = null; // Holds the uploaded p5 image
     let decayFactor = 0.96;
     let diffusionFactor = 0.25;
     let sensorAngle = Math.PI / 4;
@@ -138,9 +176,31 @@
     let fontFamily = "monospace";
 
     // --- UI EVENT LISTENERS ---
+    
+    // Text Input Listener
     document.getElementById("textInput").addEventListener("input", (e) => {
       textSeed = e.target.value;
+      imageSeed = null; // Clear the image if typing text
+      document.getElementById("imageUpload").value = ""; // Reset file input UI
       spawnAgents();
+    });
+    
+    // Image Upload Listener
+    document.getElementById("imageUpload").addEventListener("change", function(e) {
+      let file = e.target.files;
+      if (!file) return;
+      
+      let reader = new FileReader();
+      reader.onload = function(event) {
+        // Load the image into p5's memory
+        loadImage(event.target.result, function(img) {
+          imageSeed = img;
+          textSeed = ""; // Clear text
+          document.getElementById("textInput").value = ""; // Reset text UI
+          spawnAgents();
+        });
+      };
+      reader.readAsDataURL(file);
     });
     
     function bindSlider(id, valId, variableSetter, suffix = "") {
@@ -178,12 +238,10 @@
       trailMap.loadPixels();
       let pixels = trailMap.pixels;
 
-      // Update agents
       for (let agent of allAgents) {
         agent.update(pixels);
       }
 
-      // Fast unrolled 3x3 box blur & decay
       let w4 = width * 4;
       for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
@@ -197,13 +255,11 @@
             let avg = sum / 9;
             pixels[idx + c] = avg * diffusionFactor + pixels[idx + c] * (1 - diffusionFactor);
           }
-          // Apply decay to alpha channel
           pixels[idx + 3] *= decayFactor;
         }
       }
       trailMap.updatePixels();
 
-      // Deposit agent trails
       for (let agent of allAgents) {
         agent.deposit(trailMap);
       }
@@ -224,30 +280,40 @@
     function spawnAgents() {
       allAgents = [];
       trailMap.background(0); // Clear trail
-      if (textSeed.trim() === "") return;
+      letterBuffer.clear();   // Clear hidden buffer
 
-      letterBuffer.clear();
-      letterBuffer.textAlign(CENTER, CENTER);
-      letterBuffer.textFont(fontFamily);
-      letterBuffer.textSize(fontSize);
-      letterBuffer.fill(255);
-      letterBuffer.noStroke();
-      letterBuffer.text(textSeed, width / 2, height / 2);
+      // 1. Draw to the hidden buffer (Text OR Image)
+      if (imageSeed) {
+        // Calculate a scale so the image fits nicely on the screen (60% of window size)
+        let scale = Math.min((width * 0.6) / imageSeed.width, (height * 0.6) / imageSeed.height);
+        let w = imageSeed.width * scale;
+        let h = imageSeed.height * scale;
+        let x = (width - w) / 2;
+        let y = (height - h) / 2;
+        
+        letterBuffer.image(imageSeed, x, y, w, h);
+        
+      } else if (textSeed.trim() !== "") {
+        letterBuffer.textAlign(CENTER, CENTER);
+        letterBuffer.textFont(fontFamily);
+        letterBuffer.textSize(fontSize);
+        letterBuffer.fill(255);
+        letterBuffer.noStroke();
+        letterBuffer.text(textSeed, width / 2, height / 2);
+      } else {
+        return; // Nothing to draw
+      }
+
+      // 2. Scan the buffer for pixels
       letterBuffer.loadPixels();
-
       let borderPixels = [];
       
-      // FULL SCREEN SCAN: No more bounding box math. 
-      // We check every pixel on the canvas (leaving a 1px border so our edge detection doesn't crash).
       for (let px = 1; px < width - 1; px++) {
         for (let py = 1; py < height - 1; py++) {
           let idx = 4 * (px + py * width);
           
-          // Check if the current pixel is part of a letter (alpha > 128)
           if (letterBuffer.pixels[idx + 3] > 128) {
             let isEdge = false;
-            
-            // Check the 8 surrounding pixels to see if we are on the edge of the text
             for (let dx = -1; dx <= 1 && !isEdge; dx++) {
               for (let dy = -1; dy <= 1 && !isEdge; dy++) {
                 if (dx === 0 && dy === 0) continue;
@@ -263,8 +329,10 @@
 
       if (borderPixels.length === 0) return;
 
-      // Spawn exactly AGENTS_PER_LETTER times the string length
-      let totalAgents = AGENTS_PER_LETTER * textSeed.length;
+      // 3. Spawn Agents
+      // If text, scale agents by word length. If image, spawn a flat 10,000 agents.
+      let totalAgents = imageSeed ? 10000 : (AGENTS_PER_LETTER * textSeed.length);
+      
       for (let i = 0; i < totalAgents; i++) {
         let bp = random(borderPixels);
         let jitter = p5.Vector.random2D().mult(random(0, 2));
