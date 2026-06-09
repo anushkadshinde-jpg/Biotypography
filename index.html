@@ -20,7 +20,6 @@
     }
     canvas { display: block; }
     
-    /* Sleek UI Panel Overlay */
     #ui-panel {
       position: absolute;
       top: 20px;
@@ -238,24 +237,23 @@
 
       let borderPixels = [];
       
-      // Calculate width using the hidden letterBuffer to account for the 120px font size
-      let boundsW = letterBuffer.textWidth(textSeed);
-      
-      // Widen the bounding box to ensure letters like S and E aren't clipped
-      let startX = max(1, Math.floor((width - boundsW) / 2) - 60);
-      let endX = min(width - 1, Math.floor((width + boundsW) / 2) + 60);
-      let startY = max(1, Math.floor((height - fontSize) / 2) - 60);
-      let endY = min(height - 1, Math.floor((height + fontSize) / 2) + 60);
-
-      for (let px = startX; px < endX; px++) {
-        for (let py = startY; py < endY; py++) {
+      // FULL SCREEN SCAN: No more bounding box math. 
+      // We check every pixel on the canvas (leaving a 1px border so our edge detection doesn't crash).
+      for (let px = 1; px < width - 1; px++) {
+        for (let py = 1; py < height - 1; py++) {
           let idx = 4 * (px + py * width);
+          
+          // Check if the current pixel is part of a letter (alpha > 128)
           if (letterBuffer.pixels[idx + 3] > 128) {
             let isEdge = false;
+            
+            // Check the 8 surrounding pixels to see if we are on the edge of the text
             for (let dx = -1; dx <= 1 && !isEdge; dx++) {
               for (let dy = -1; dy <= 1 && !isEdge; dy++) {
                 if (dx === 0 && dy === 0) continue;
-                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) isEdge = true;
+                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) {
+                  isEdge = true;
+                }
               }
             }
             if (isEdge) borderPixels.push({ x: px, y: py });
