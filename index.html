@@ -18,7 +18,8 @@
   const HEX_COLOR = "#E6E800";
 
   let trailMap;
-  const AGENT_COUNT = 1000;
+  // Set to 1000 for a much smoother baseline performance.
+  const AGENT_COUNT = 1000; 
   const SENSOR_DIST = 10;
   const SENSOR_ANGLE = Math.PI / 4;
   const ROTATION_ANGLE = Math.PI / 6;
@@ -47,6 +48,7 @@
     letterBuffer = createGraphics(width, height);
     trailColorObj = color(HEX_COLOR);
     trailColorObj.setAlpha(100);
+    
     if (INITIAL_TEXT && INITIAL_TEXT.length > 0) {
       typedText = INITIAL_TEXT;
       layoutTypedText(typedText);
@@ -71,31 +73,48 @@
   }
 
   function draw() {
+    // 1. Load pixels ONCE for the agents to sense
+    trailMap.loadPixels();
+    let pixels = trailMap.pixels;
+
+    // 2. Update agents using the fast pixel array
     for (let group of allAgentGroups) {
       for (let agent of group.agents) {
-        agent.update();
+        agent.update(pixels);
+      }
+    }
+
+    // 3. Optimized Diffusion and Decay
+    let w4 = width * 4;
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let idx = 4 * (x + y * width);
+        
+        // Unroll the 3x3 loop for massive speed gains
+        for (let c = 0; c < 3; c++) {
+          let sum = 
+            pixels[idx - 4 - w4 + c] + pixels[idx - w4 + c] + pixels[idx + 4 - w4 + c] +
+            pixels[idx - 4 + c]      + pixels[idx + c]      + pixels[idx + 4 + c] +
+            pixels[idx - 4 + w4 + c] + pixels[idx + w4 + c] + pixels[idx + 4 + w4 + c];
+            
+          let avg = sum / 9;
+          pixels[idx + c] = avg * DIFFUSION + pixels[idx + c] * (1 - DIFFUSION);
+        }
+        // Apply decay to the alpha channel
+        pixels[idx + 3] *= DECAY;
+      }
+    }
+    
+    // Push the blurred/decayed pixels back to the canvas
+    trailMap.updatePixels();
+
+    // 4. Deposit the agents onto the updated canvas
+    for (let group of allAgentGroups) {
+      for (let agent of group.agents) {
         agent.deposit(trailMap);
       }
     }
-    trailMap.loadPixels();
-    for (let x = 1; x < width - 1; x++) {
-      for (let y = 1; y < height - 1; y++) {
-        let idx = 4 * (x + y * width);
-        for (let c = 0; c < 3; c++) {
-          let avg = 0;
-          for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-              let nIdx = 4 * (x + dx + (y + dy) * width) + c;
-              avg += trailMap.pixels[nIdx];
-            }
-          }
-          avg /= 9;
-          trailMap.pixels[idx + c] = avg * DIFFUSION + trailMap.pixels[idx + c] * (1 - DIFFUSION);
-        }
-        trailMap.pixels[idx + 3] *= DECAY;
-      }
-    }
-    trailMap.updatePixels();
+
     background(0);
     image(trailMap, 0, 0);
   }
@@ -105,23 +124,37 @@
       this.pos = createVector(x, y);
       this.angle = angle;
     }
-    update() {
-      let sL = this.sense(this.angle - SENSOR_ANGLE);
-      let sC = this.sense(this.angle);
-      let sR = this.sense(this.angle + SENSOR_ANGLE);
+
+    update(pixels) {
+      // Pass the pixels array to the sense function
+      let sL = this.sense(this.angle - SENSOR_ANGLE, pixels);
+      let sC = this.sense(this.angle, pixels);
+      let sR = this.sense(this.angle + SENSOR_ANGLE, pixels);
+      
       if (sL > sC && sL > sR) { this.angle -= ROTATION_ANGLE; }
       else if (sR > sC && sR > sL) { this.angle += ROTATION_ANGLE; }
       else { this.angle += random(-0.1, 0.1); }
+      
       this.pos.x += cos(this.angle) * STEP_SIZE;
       this.pos.y += sin(this.angle) * STEP_SIZE;
+      
+      // Screen wrapping
       this.pos.x = (this.pos.x + width) % width;
       this.pos.y = (this.pos.y + height) % height;
     }
-    sense(angle) {
-      let sx = constrain(this.pos.x + cos(angle) * SENSOR_DIST, 0, width - 1);
-      let sy = constrain(this.pos.y + sin(angle) * SENSOR_DIST, 0, height - 1);
-      return trailMap.get(sx, sy);
+
+    sense(angle, pixels) {
+      let sx = Math.floor(this.pos.x + Math.cos(angle) * SENSOR_DIST);
+      let sy = Math.floor(this.pos.y + Math.sin(angle) * SENSOR_DIST);
+      
+      // Fast boundary check
+      if (sx < 0 || sx >= width || sy < 0 || sy >= height) return 0;
+      
+      // Look up the Red channel directly in the 1D pixel array
+      let idx = 4 * (sx + sy * width);
+      return pixels[idx]; 
     }
+
     deposit(pg) {
       pg.noStroke();
       pg.fill(trailColorObj);
@@ -138,6 +171,7 @@
     letterBuffer.noStroke();
     letterBuffer.text(letter, x, y);
     letterBuffer.loadPixels();
+    
     let borderPixels = [];
     let w = textWidth(letter);
     for (let px = int(x) + 1; px < int(x + w) - 1; px++) {
@@ -199,11 +233,16 @@
 
   function keyPressed() {
     if (keyCode === BACKSPACE) {
-      if (typedText.length > 0) { typedText = typedText.slice(0, -1); layoutTypedText(typedText); }
+      if (typedText.length > 0) { 
+        typedText = typedText.slice(0, -1); 
+        layoutTypedText(typedText); 
+      }
       return false;
     }
     if (keyCode === ENTER || keyCode === RETURN) {
-      typedText += "\n"; layoutTypedText(typedText); return false;
+      typedText += "\n"; 
+      layoutTypedText(typedText); 
+      return false;
     }
   }
 </script>
