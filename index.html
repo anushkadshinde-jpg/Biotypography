@@ -1,250 +1,311 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Slime Mould Type</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Physarum Decay Machine</title>
   <style>
+    :root {
+      --bg: #000000;
+      --panel-bg: rgba(15, 15, 15, 0.85);
+      --text: #ffffff;
+      --accent: #E6E800;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; background: #000; }
+    body { 
+      overflow: hidden; 
+      background: var(--bg); 
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+      color: var(--text);
+    }
     canvas { display: block; }
+    
+    /* Sleek UI Panel Overlay */
+    #ui-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 320px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      z-index: 10;
+    }
+    
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    p.subtitle {
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    .control-group { margin-bottom: 15px; }
+    
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 5px;
+      color: #ccc;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 10px;
+      border-radius: 6px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    
+    span.val { font-family: monospace; color: var(--accent); }
   </style>
 </head>
 <body>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-<script>
-  const INITIAL_TEXT = "Type in anything to see it grow!";
-  const DECAY = 0.96;
-  const HEX_COLOR = "#E6E800";
 
-  let trailMap;
-  // Set to 1000 for a much smoother baseline performance.
-  const AGENT_COUNT = 1000; 
-  const SENSOR_DIST = 10;
-  const SENSOR_ANGLE = Math.PI / 4;
-  const ROTATION_ANGLE = Math.PI / 6;
-  const STEP_SIZE = 0.96;
-  const DIFFUSION = 0.25;
+  <div id="ui-panel">
+    <h1>Physarum Model</h1>
+    <p class="subtitle">Interactive Slime Mold Simulation</p>
 
-  let trailColorObj;
-  let fontSize = 64;
-  let fontFamily = "monospace";
-  let margin = 40;
-  let linegap = 1.2;
-  let maxWidth;
-  let typedText = "";
-  let letterMetas = [];
-  let allAgentGroups = [];
-  let letterBuffer;
+    <div class="control-group">
+      <label for="textInput">Seed Text</label>
+      <input type="text" id="textInput" value="SLIME">
+    </div>
 
-  function setup() {
-    createCanvas(windowWidth, windowHeight);
-    pixelDensity(1);
-    maxWidth = width - 2 * margin;
-    trailMap = createGraphics(width, height);
-    trailMap.background(0);
-    textFont(fontFamily);
-    textSize(fontSize);
-    letterBuffer = createGraphics(width, height);
-    trailColorObj = color(HEX_COLOR);
-    trailColorObj.setAlpha(100);
+    <div class="control-group">
+      <label>Decay (Fade)<span class="val" id="decayVal">0.96</span></label>
+      <input type="range" id="decaySlider" min="0.80" max="0.99" step="0.01" value="0.96">
+    </div>
+
+    <div class="control-group">
+      <label>Diffusion (Blur)<span class="val" id="diffVal">0.25</span></label>
+      <input type="range" id="diffSlider" min="0" max="1" step="0.05" value="0.25">
+    </div>
+
+    <div class="control-group">
+      <label>Sensor Angle<span class="val" id="saVal">45°</span></label>
+      <input type="range" id="saSlider" min="10" max="90" step="1" value="45">
+    </div>
+
+    <div class="control-group">
+      <label>Rotation Angle<span class="val" id="raVal">30°</span></label>
+      <input type="range" id="raSlider" min="5" max="90" step="1" value="30">
+    </div>
     
-    if (INITIAL_TEXT && INITIAL_TEXT.length > 0) {
-      typedText = INITIAL_TEXT;
-      layoutTypedText(typedText);
-      for (let meta of letterMetas) {
-        if (meta.char !== " " && meta.char !== "\n") {
-          let borderPixels = getLetterBorderPixels(meta.char, meta.x, meta.y);
-          if (borderPixels.length > 0) {
-            let agents = [];
-            for (let i = 0; i < AGENT_COUNT; i++) {
-              let idx = floor(random(borderPixels.length));
-              let bp = borderPixels[idx];
-              let jitter = p5.Vector.random2D().mult(random(0, 2));
-              let pos = createVector(bp.x, bp.y).add(jitter);
-              let angle = random(TWO_PI);
-              agents.push(new Agent(pos.x, pos.y, angle));
-            }
-            allAgentGroups.push({ agents: agents });
-          }
-        }
-      }
+    <div class="control-group">
+      <label>Step Size<span class="val" id="stepVal">1.5</span></label>
+      <input type="range" id="stepSlider" min="0.1" max="5.0" step="0.1" value="1.5">
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script>
+    // --- SIMULATION PARAMETERS ---
+    const AGENTS_PER_LETTER = 2000; 
+    const SENSOR_DIST = 10;
+    const HEX_COLOR = "#E6E800";
+
+    // Dynamic Variables linked to UI
+    let textSeed = "SLIME";
+    let decayFactor = 0.96;
+    let diffusionFactor = 0.25;
+    let sensorAngle = Math.PI / 4;
+    let rotationAngle = Math.PI / 6;
+    let stepSize = 1.5;
+
+    // Rendering internals
+    let trailMap, letterBuffer, trailColorObj;
+    let allAgents = [];
+    let fontSize = 120;
+    let fontFamily = "monospace";
+
+    // --- UI EVENT LISTENERS ---
+    document.getElementById("textInput").addEventListener("input", (e) => {
+      textSeed = e.target.value;
+      spawnAgents();
+    });
+    
+    function bindSlider(id, valId, variableSetter, suffix = "") {
+      const slider = document.getElementById(id);
+      const valDisp = document.getElementById(valId);
+      slider.addEventListener("input", (e) => {
+        valDisp.innerText = e.target.value + suffix;
+        variableSetter(parseFloat(e.target.value));
+      });
     }
-  }
 
-  function draw() {
-    // 1. Load pixels ONCE for the agents to sense
-    trailMap.loadPixels();
-    let pixels = trailMap.pixels;
+    bindSlider("decaySlider", "decayVal", v => decayFactor = v);
+    bindSlider("diffSlider", "diffVal", v => diffusionFactor = v);
+    bindSlider("stepSlider", "stepVal", v => stepSize = v);
+    bindSlider("saSlider", "saVal", v => sensorAngle = v * (Math.PI / 180), "°");
+    bindSlider("raSlider", "raVal", v => rotationAngle = v * (Math.PI / 180), "°");
 
-    // 2. Update agents using the fast pixel array
-    for (let group of allAgentGroups) {
-      for (let agent of group.agents) {
+    // --- P5.JS SETUP ---
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      pixelDensity(1); 
+      
+      trailMap = createGraphics(width, height);
+      trailMap.background(0);
+      
+      letterBuffer = createGraphics(width, height);
+      trailColorObj = color(HEX_COLOR);
+      trailColorObj.setAlpha(120);
+
+      spawnAgents();
+    }
+
+    // --- P5.JS DRAW LOOP ---
+    function draw() {
+      trailMap.loadPixels();
+      let pixels = trailMap.pixels;
+
+      // Update agents
+      for (let agent of allAgents) {
         agent.update(pixels);
       }
-    }
 
-    // 3. Optimized Diffusion and Decay
-    let w4 = width * 4;
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let idx = 4 * (x + y * width);
-        
-        // Unroll the 3x3 loop for massive speed gains
-        for (let c = 0; c < 3; c++) {
-          let sum = 
-            pixels[idx - 4 - w4 + c] + pixels[idx - w4 + c] + pixels[idx + 4 - w4 + c] +
-            pixels[idx - 4 + c]      + pixels[idx + c]      + pixels[idx + 4 + c] +
-            pixels[idx - 4 + w4 + c] + pixels[idx + w4 + c] + pixels[idx + 4 + w4 + c];
-            
-          let avg = sum / 9;
-          pixels[idx + c] = avg * DIFFUSION + pixels[idx + c] * (1 - DIFFUSION);
+      // Fast unrolled 3x3 box blur & decay
+      let w4 = width * 4;
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          let idx = 4 * (x + y * width);
+          for (let c = 0; c < 3; c++) {
+            let sum = 
+              pixels[idx - 4 - w4 + c] + pixels[idx - w4 + c] + pixels[idx + 4 - w4 + c] +
+              pixels[idx - 4 + c]      + pixels[idx + c]      + pixels[idx + 4 + c] +
+              pixels[idx - 4 + w4 + c] + pixels[idx + w4 + c] + pixels[idx + 4 + w4 + c];
+              
+            let avg = sum / 9;
+            pixels[idx + c] = avg * diffusionFactor + pixels[idx + c] * (1 - diffusionFactor);
+          }
+          // Apply decay to alpha channel
+          pixels[idx + 3] *= decayFactor;
         }
-        // Apply decay to the alpha channel
-        pixels[idx + 3] *= DECAY;
       }
-    }
-    
-    // Push the blurred/decayed pixels back to the canvas
-    trailMap.updatePixels();
+      trailMap.updatePixels();
 
-    // 4. Deposit the agents onto the updated canvas
-    for (let group of allAgentGroups) {
-      for (let agent of group.agents) {
+      // Deposit agent trails
+      for (let agent of allAgents) {
         agent.deposit(trailMap);
       }
+
+      background(0);
+      image(trailMap, 0, 0);
     }
 
-    background(0);
-    image(trailMap, 0, 0);
-  }
-
-  class Agent {
-    constructor(x, y, angle) {
-      this.pos = createVector(x, y);
-      this.angle = angle;
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      trailMap = createGraphics(width, height);
+      trailMap.background(0);
+      letterBuffer = createGraphics(width, height);
+      spawnAgents();
     }
 
-    update(pixels) {
-      // Pass the pixels array to the sense function
-      let sL = this.sense(this.angle - SENSOR_ANGLE, pixels);
-      let sC = this.sense(this.angle, pixels);
-      let sR = this.sense(this.angle + SENSOR_ANGLE, pixels);
-      
-      if (sL > sC && sL > sR) { this.angle -= ROTATION_ANGLE; }
-      else if (sR > sC && sR > sL) { this.angle += ROTATION_ANGLE; }
-      else { this.angle += random(-0.1, 0.1); }
-      
-      this.pos.x += cos(this.angle) * STEP_SIZE;
-      this.pos.y += sin(this.angle) * STEP_SIZE;
-      
-      // Screen wrapping
-      this.pos.x = (this.pos.x + width) % width;
-      this.pos.y = (this.pos.y + height) % height;
-    }
+    // --- AGENT SPAWNING LOGIC ---
+    function spawnAgents() {
+      allAgents = [];
+      trailMap.background(0); // Clear trail
+      if (textSeed.trim() === "") return;
 
-    sense(angle, pixels) {
-      let sx = Math.floor(this.pos.x + Math.cos(angle) * SENSOR_DIST);
-      let sy = Math.floor(this.pos.y + Math.sin(angle) * SENSOR_DIST);
-      
-      // Fast boundary check
-      if (sx < 0 || sx >= width || sy < 0 || sy >= height) return 0;
-      
-      // Look up the Red channel directly in the 1D pixel array
-      let idx = 4 * (sx + sy * width);
-      return pixels[idx]; 
-    }
+      letterBuffer.clear();
+      letterBuffer.textAlign(CENTER, CENTER);
+      letterBuffer.textFont(fontFamily);
+      letterBuffer.textSize(fontSize);
+      letterBuffer.fill(255);
+      letterBuffer.noStroke();
+      letterBuffer.text(textSeed, width / 2, height / 2);
+      letterBuffer.loadPixels();
 
-    deposit(pg) {
-      pg.noStroke();
-      pg.fill(trailColorObj);
-      pg.ellipse(this.pos.x, this.pos.y, 1.5, 1.5);
-    }
-  }
+      let borderPixels = [];
+      
+      // Sample edge detection bounding box
+      let boundsW = textWidth(textSeed);
+      let startX = max(1, Math.floor((width - boundsW) / 2) - 20);
+      let endX = min(width - 1, startX + boundsW + 40);
+      let startY = max(1, Math.floor((height - fontSize) / 2) - 20);
+      let endY = min(height - 1, startY + fontSize + 40);
 
-  function getLetterBorderPixels(letter, x, y) {
-    letterBuffer.clear();
-    letterBuffer.textAlign(LEFT, TOP);
-    letterBuffer.textFont(fontFamily);
-    letterBuffer.textSize(fontSize);
-    letterBuffer.fill(255);
-    letterBuffer.noStroke();
-    letterBuffer.text(letter, x, y);
-    letterBuffer.loadPixels();
-    
-    let borderPixels = [];
-    let w = textWidth(letter);
-    for (let px = int(x) + 1; px < int(x + w) - 1; px++) {
-      for (let py = int(y) + 1; py < int(y + fontSize * linegap) - 1 && py < height - 1; py++) {
-        let idx = 4 * (px + py * width);
-        if (letterBuffer.pixels[idx + 3] > 128) {
-          let isEdge = false;
-          for (let dx = -1; dx <= 1 && !isEdge; dx++) {
-            for (let dy = -1; dy <= 1 && !isEdge; dy++) {
-              if (dx === 0 && dy === 0) continue;
-              if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) isEdge = true;
+      for (let px = startX; px < endX; px++) {
+        for (let py = startY; py < endY; py++) {
+          let idx = 4 * (px + py * width);
+          if (letterBuffer.pixels[idx + 3] > 128) {
+            let isEdge = false;
+            for (let dx = -1; dx <= 1 && !isEdge; dx++) {
+              for (let dy = -1; dy <= 1 && !isEdge; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) isEdge = true;
+              }
             }
+            if (isEdge) borderPixels.push({ x: px, y: py });
           }
-          if (isEdge) borderPixels.push({ x: px, y: py });
         }
       }
-    }
-    return borderPixels;
-  }
 
-  function layoutTypedText(txt) {
-    letterMetas = [];
-    textFont(fontFamily);
-    textSize(fontSize);
-    let x = margin, y = margin;
-    for (let i = 0; i < txt.length; i++) {
-      let ch = txt[i];
-      if (ch === "\n") { y += fontSize * linegap; x = margin; continue; }
-      if (ch === " ") { letterMetas.push({ char: " ", x, y }); x += textWidth(" "); continue; }
-      let w = textWidth(ch);
-      if (x + w > margin + maxWidth) { y += fontSize * linegap; x = margin; }
-      letterMetas.push({ char: ch, x, y });
-      x += w;
-    }
-  }
+      if (borderPixels.length === 0) return;
 
-  function keyTyped() {
-    if (key.length === 1 || key === " ") {
-      typedText += key;
-      layoutTypedText(typedText);
-      let lastMeta = letterMetas[letterMetas.length - 1];
-      if (lastMeta && lastMeta.char !== " " && lastMeta.char !== "\n") {
-        let borderPixels = getLetterBorderPixels(lastMeta.char, lastMeta.x, lastMeta.y);
-        if (borderPixels.length > 0) {
-          let agents = [];
-          for (let i = 0; i < AGENT_COUNT; i++) {
-            let idx = floor(random(borderPixels.length));
-            let bp = borderPixels[idx];
-            let jitter = p5.Vector.random2D().mult(random(0, 2));
-            let pos = createVector(bp.x, bp.y).add(jitter);
-            agents.push(new Agent(pos.x, pos.y, random(TWO_PI)));
-          }
-          allAgentGroups.push({ agents });
-        }
+      // Spawn exactly AGENTS_PER_LETTER times the string length
+      let totalAgents = AGENTS_PER_LETTER * textSeed.length;
+      for (let i = 0; i < totalAgents; i++) {
+        let bp = random(borderPixels);
+        let jitter = p5.Vector.random2D().mult(random(0, 2));
+        allAgents.push(new Agent(bp.x + jitter.x, bp.y + jitter.y, random(TWO_PI)));
       }
     }
-    return false;
-  }
 
-  function keyPressed() {
-    if (keyCode === BACKSPACE) {
-      if (typedText.length > 0) { 
-        typedText = typedText.slice(0, -1); 
-        layoutTypedText(typedText); 
+    // --- AGENT CLASS ---
+    class Agent {
+      constructor(x, y, angle) {
+        this.pos = createVector(x, y);
+        this.angle = angle;
       }
-      return false;
+      update(pixels) {
+        let sL = this.sense(this.angle - sensorAngle, pixels);
+        let sC = this.sense(this.angle, pixels);
+        let sR = this.sense(this.angle + sensorAngle, pixels);
+        
+        if (sL > sC && sL > sR) { this.angle -= rotationAngle; }
+        else if (sR > sC && sR > sL) { this.angle += rotationAngle; }
+        else { this.angle += random(-0.1, 0.1); }
+        
+        this.pos.x += cos(this.angle) * stepSize;
+        this.pos.y += sin(this.angle) * stepSize;
+        
+        this.pos.x = (this.pos.x + width) % width;
+        this.pos.y = (this.pos.y + height) % height;
+      }
+      sense(angle, pixels) {
+        let sx = Math.floor(this.pos.x + Math.cos(angle) * SENSOR_DIST);
+        let sy = Math.floor(this.pos.y + Math.sin(angle) * SENSOR_DIST);
+        if (sx < 0 || sx >= width || sy < 0 || sy >= height) return 0;
+        let idx = 4 * (sx + sy * width);
+        return pixels[idx]; 
+      }
+      deposit(pg) {
+        pg.noStroke();
+        pg.fill(trailColorObj);
+        pg.ellipse(this.pos.x, this.pos.y, 1.5, 1.5);
+      }
     }
-    if (keyCode === ENTER || keyCode === RETURN) {
-      typedText += "\n"; 
-      layoutTypedText(typedText); 
-      return false;
-    }
-  }
-</script>
+  </script>
 </body>
 </html>
