@@ -220,4 +220,156 @@
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
-      pixelDensity(1);
+      pixelDensity(1); 
+      
+      trailMap = createGraphics(width, height);
+      trailMap.background(0);
+      
+      letterBuffer = createGraphics(width, height);
+      trailColorObj = color(HEX_COLOR);
+      trailColorObj.setAlpha(120);
+
+      spawnAgents();
+    }
+
+    function draw() {
+      trailMap.loadPixels();
+      let pixels = trailMap.pixels;
+
+      for (let agent of allAgents) {
+        agent.update(pixels);
+      }
+
+      let w4 = width * 4;
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          let idx = 4 * (x + y * width);
+          for (let c = 0; c < 3; c++) {
+            let sum = 
+              pixels[idx - 4 - w4 + c] + pixels[idx - w4 + c] + pixels[idx + 4 - w4 + c] +
+              pixels[idx - 4 + c]      + pixels[idx + c]      + pixels[idx + 4 + c] +
+              pixels[idx - 4 + w4 + c] + pixels[idx + w4 + c] + pixels[idx + 4 + w4 + c];
+              
+            let avg = sum / 9;
+            pixels[idx + c] = avg * diffusionFactor + pixels[idx + c] * (1 - diffusionFactor);
+          }
+          pixels[idx + 3] *= decayFactor;
+        }
+      }
+      trailMap.updatePixels();
+
+      for (let agent of allAgents) {
+        agent.deposit(trailMap);
+      }
+
+      background(0);
+      image(trailMap, 0, 0);
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      trailMap = createGraphics(width, height);
+      trailMap.background(0);
+      letterBuffer = createGraphics(width, height);
+      spawnAgents();
+    }
+
+    function spawnAgents() {
+      allAgents = [];
+      trailMap.background(0); 
+      letterBuffer.clear();   
+
+      // 1. Draw to hidden buffer
+      if (imageSeed) {
+        let img = imageSeed.element;
+        let scale = Math.min((width * 0.6) / imageSeed.width, (height * 0.6) / imageSeed.height);
+        let w = imageSeed.width * scale;
+        let h = imageSeed.height * scale;
+        let x = (width - w) / 2;
+        let y = (height - h) / 2;
+        
+        letterBuffer.drawingContext.drawImage(img, x, y, w, h);
+        
+      } else if (textSeed.trim() !== "") {
+        letterBuffer.textAlign(CENTER, CENTER);
+        letterBuffer.textFont(fontFamily);
+        letterBuffer.textSize(fontSize);
+        letterBuffer.fill(255);
+        letterBuffer.noStroke();
+        letterBuffer.text(textSeed, width / 2, height / 2);
+      } else {
+        return; 
+      }
+
+      // 2. Scan for ALL solid pixels (Volume Detection instead of Edge Detection)
+      letterBuffer.loadPixels();
+      let validPixels = [];
+      let isImageMode = imageSeed !== null;
+      let isJpeg = isImageMode ? imageSeed.isJpeg : false;
+      
+      // Step by 2 to keep it incredibly fast
+      for (let px = 0; px < width; px += 2) {
+        for (let py = 0; py < height; py += 2) {
+          let idx = 4 * (px + py * width);
+          let alpha = letterBuffer.pixels[idx + 3];
+          
+          if (alpha > 20) {
+            if (isJpeg) {
+              let r = letterBuffer.pixels[idx];
+              let g = letterBuffer.pixels[idx + 1];
+              let b = letterBuffer.pixels[idx + 2];
+              if (r > 240 && g > 240 && b > 240) continue; // Ignore white in JPEGs
+            }
+            validPixels.push({ x: px, y: py });
+          }
+        }
+      }
+
+      if (validPixels.length === 0) return;
+
+      // 3. Spawn Agents
+      let totalAgents = imageSeed ? 12000 : (AGENTS_PER_LETTER * textSeed.length);
+      
+      for (let i = 0; i < totalAgents; i++) {
+        let bp = random(validPixels);
+        let jitter = p5.Vector.random2D().mult(random(0, 2));
+        allAgents.push(new Agent(bp.x + jitter.x, bp.y + jitter.y, random(TWO_PI)));
+      }
+    }
+
+    class Agent {
+      constructor(x, y, angle) {
+        this.pos = createVector(x, y);
+        this.angle = angle;
+      }
+      update(pixels) {
+        let sL = this.sense(this.angle - sensorAngle, pixels);
+        let sC = this.sense(this.angle, pixels);
+        let sR = this.sense(this.angle + sensorAngle, pixels);
+        
+        if (sL > sC && sL > sR) { this.angle -= rotationAngle; }
+        else if (sR > sC && sR > sL) { this.angle += rotationAngle; }
+        else { this.angle += random(-0.1, 0.1); }
+        
+        this.pos.x += cos(this.angle) * stepSize;
+        this.pos.y += sin(this.angle) * stepSize;
+        
+        this.pos.x = (this.pos.x + width) % width;
+        this.pos.y = (this.pos.y + height) % height;
+      }
+      sense(angle, pixels) {
+        let sx = Math.floor(this.pos.x + Math.cos(angle) * SENSOR_DIST);
+        let sy = Math.floor(this.pos.y + Math.sin(angle) * SENSOR_DIST);
+        if (sx < 0 || sx >= width || sy < 0 || sy >= height) return 0;
+        let idx = 4 * (sx + sy * width);
+        return pixels[idx]; 
+      }
+      deposit(pg) {
+        pg.noStroke();
+        pg.fill(trailColorObj);
+        pg.ellipse(this.pos.x, this.pos.y, 1.5, 1.5);
+      }
+    }
+  </script>
+</body>
+</html>
