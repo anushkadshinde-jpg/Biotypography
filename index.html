@@ -238,12 +238,14 @@
 
       let borderPixels = [];
       
-      // Sample edge detection bounding box
-      let boundsW = textWidth(textSeed);
-      let startX = max(1, Math.floor((width - boundsW) / 2) - 20);
-      let endX = min(width - 1, startX + boundsW + 40);
-      let startY = max(1, Math.floor((height - fontSize) / 2) - 20);
-      let endY = min(height - 1, startY + fontSize + 40);
+      // Calculate width using the hidden letterBuffer to account for the 120px font size
+      let boundsW = letterBuffer.textWidth(textSeed);
+      
+      // Widen the bounding box to ensure letters like S and E aren't clipped
+      let startX = max(1, Math.floor((width - boundsW) / 2) - 60);
+      let endX = min(width - 1, Math.floor((width + boundsW) / 2) + 60);
+      let startY = max(1, Math.floor((height - fontSize) / 2) - 60);
+      let endY = min(height - 1, Math.floor((height + fontSize) / 2) + 60);
 
       for (let px = startX; px < endX; px++) {
         for (let py = startY; py < endY; py++) {
