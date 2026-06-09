@@ -77,7 +77,6 @@
       cursor: pointer;
     }
     
-    /* File input styling */
     input[type="file"]::file-selector-button {
       background: rgba(255,255,255,0.1);
       border: 1px solid rgba(255,255,255,0.2);
@@ -121,7 +120,7 @@
     </div>
     
     <div class="control-group">
-      <label for="imageUpload">...or Upload Image (PNG/SVG)</label>
+      <label for="imageUpload">...or Upload Image</label>
       <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/svg+xml">
     </div>
 
@@ -160,9 +159,9 @@
     const SENSOR_DIST = 10;
     const HEX_COLOR = "#E6E800";
 
-    // Dynamic Variables linked to UI
+    // Dynamic Variables
     let textSeed = "SLIME";
-    let imageSeed = null; // Holds the uploaded p5 image
+    let imageSeed = null; 
     let decayFactor = 0.96;
     let diffusionFactor = 0.25;
     let sensorAngle = Math.PI / 4;
@@ -177,28 +176,35 @@
 
     // --- UI EVENT LISTENERS ---
     
-    // Text Input Listener
     document.getElementById("textInput").addEventListener("input", (e) => {
       textSeed = e.target.value;
-      imageSeed = null; // Clear the image if typing text
-      document.getElementById("imageUpload").value = ""; // Reset file input UI
+      imageSeed = null; 
+      document.getElementById("imageUpload").value = ""; 
       spawnAgents();
     });
     
-    // Image Upload Listener
+    // Custom Vanilla HTML5 Image Loader (Bypasses p5 bugs)
     document.getElementById("imageUpload").addEventListener("change", function(e) {
       let file = e.target.files;
       if (!file) return;
       
       let reader = new FileReader();
       reader.onload = function(event) {
-        // Load the image into p5's memory
-        loadImage(event.target.result, function(img) {
-          imageSeed = img;
-          textSeed = ""; // Clear text
-          document.getElementById("textInput").value = ""; // Reset text UI
+        let img = new Image();
+        img.onload = function() {
+          // Fallback sizes if an SVG is loaded without strict dimensions
+          let w = img.width || 800;
+          let h = img.height || 800;
+          
+          imageSeed = { element: img, width: w, height: h };
+          textSeed = ""; 
+          document.getElementById("textInput").value = ""; 
           spawnAgents();
-        });
+        };
+        img.onerror = function() {
+          alert("Error reading this image file. Try a standard PNG or JPG.");
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     });
@@ -279,19 +285,19 @@
     // --- AGENT SPAWNING LOGIC ---
     function spawnAgents() {
       allAgents = [];
-      trailMap.background(0); // Clear trail
-      letterBuffer.clear();   // Clear hidden buffer
+      trailMap.background(0); 
+      letterBuffer.clear();   
 
-      // 1. Draw to the hidden buffer (Text OR Image)
+      // 1. Draw to hidden buffer
       if (imageSeed) {
-        // Calculate a scale so the image fits nicely on the screen (60% of window size)
         let scale = Math.min((width * 0.6) / imageSeed.width, (height * 0.6) / imageSeed.height);
         let w = imageSeed.width * scale;
         let h = imageSeed.height * scale;
         let x = (width - w) / 2;
         let y = (height - h) / 2;
         
-        letterBuffer.image(imageSeed, x, y, w, h);
+        // Draw using native canvas API to fix rendering sync issues
+        letterBuffer.drawingContext.drawImage(imageSeed.element, x, y, w, h);
         
       } else if (textSeed.trim() !== "") {
         letterBuffer.textAlign(CENTER, CENTER);
@@ -301,23 +307,41 @@
         letterBuffer.noStroke();
         letterBuffer.text(textSeed, width / 2, height / 2);
       } else {
-        return; // Nothing to draw
+        return; 
       }
 
-      // 2. Scan the buffer for pixels
+      // 2. Scan for edges using a smarter algorithm
       letterBuffer.loadPixels();
       let borderPixels = [];
+      let isImageMode = imageSeed !== null;
       
+      // Helper: Determines if a pixel is part of the "shape"
+      function isSolidPixel(index) {
+        let alpha = letterBuffer.pixels[index + 3];
+        if (alpha < 128) return false; // Transparent is always background
+        
+        // If image uploaded, ignore pure white pixels (JPEG background fix)
+        if (isImageMode) {
+          let r = letterBuffer.pixels[index];
+          let g = letterBuffer.pixels[index + 1];
+          let b = letterBuffer.pixels[index + 2];
+          if (r > 240 && g > 240 && b > 240) return false; 
+        }
+        return true;
+      }
+
       for (let px = 1; px < width - 1; px++) {
         for (let py = 1; py < height - 1; py++) {
           let idx = 4 * (px + py * width);
           
-          if (letterBuffer.pixels[idx + 3] > 128) {
+          if (isSolidPixel(idx)) {
             let isEdge = false;
+            // Check neighbors. If a solid pixel touches a background pixel, it's an edge.
             for (let dx = -1; dx <= 1 && !isEdge; dx++) {
               for (let dy = -1; dy <= 1 && !isEdge; dy++) {
                 if (dx === 0 && dy === 0) continue;
-                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) {
+                let nIdx = 4 * (px + dx + (py + dy) * width);
+                if (!isSolidPixel(nIdx)) {
                   isEdge = true;
                 }
               }
@@ -327,11 +351,13 @@
         }
       }
 
-      if (borderPixels.length === 0) return;
+      if (borderPixels.length === 0) {
+        console.log("No edges found in image.");
+        return;
+      }
 
       // 3. Spawn Agents
-      // If text, scale agents by word length. If image, spawn a flat 10,000 agents.
-      let totalAgents = imageSeed ? 10000 : (AGENTS_PER_LETTER * textSeed.length);
+      let totalAgents = imageSeed ? 8000 : (AGENTS_PER_LETTER * textSeed.length);
       
       for (let i = 0; i < totalAgents; i++) {
         let bp = random(borderPixels);
