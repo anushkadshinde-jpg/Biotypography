@@ -7,350 +7,536 @@
   <style>
     :root {
       --bg: #000000;
-      --panel-bg: rgba(15, 15, 15, 0.85);
+      --panel-bg: rgba(15, 15, 15, 0.88);
       --text: #ffffff;
       --accent: #E6E800;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      overflow: hidden; 
-      background: var(--bg); 
-      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+    body {
+      overflow: hidden;
+      background: var(--bg);
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
     }
     canvas { display: block; }
-    
-    /* Sleek UI Panel Overlay */
+
     #ui-panel {
       position: absolute;
-      top: 20px;
-      left: 20px;
-      width: 320px;
+      top: 20px; left: 20px;
+      width: 300px;
       background: var(--panel-bg);
       backdrop-filter: blur(10px);
-      padding: 20px;
+      padding: 18px;
       border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255,255,255,0.1);
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
       z-index: 10;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
     }
-    
-    h1 {
-      font-size: 1.2rem;
-      font-weight: 600;
-      margin-bottom: 5px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-    p.subtitle {
-      font-size: 0.8rem;
-      color: #888;
-      margin-bottom: 20px;
-    }
+    h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; }
+    p.subtitle { font-size: 0.75rem; color: #888; margin-bottom: 16px; }
 
-    .control-group { margin-bottom: 15px; }
-    
-    label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      margin-bottom: 5px;
-      color: #ccc;
+    .tab-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    .tab-btn {
+      flex: 1; padding: 6px 0;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; color: #aaa;
+      font-size: 0.75rem; font-family: inherit;
+      cursor: pointer; letter-spacing: 0.5px;
+      transition: all 0.15s;
     }
-    
+    .tab-btn.active { background: rgba(230,232,0,0.12); border-color: var(--accent); color: var(--accent); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .control-group { margin-bottom: 13px; }
+    label {
+      display: flex; justify-content: space-between;
+      font-size: 0.82rem; margin-bottom: 4px; color: #ccc;
+    }
+    label.block-label { display: block; }
     input[type="text"] {
       width: 100%;
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.2);
-      color: white;
-      padding: 10px;
-      border-radius: 6px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s;
+      color: white; padding: 9px; border-radius: 6px;
+      font-family: inherit; outline: none; transition: border-color 0.2s;
     }
     input[type="text"]:focus { border-color: var(--accent); }
-
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-    
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
     span.val { font-family: monospace; color: var(--accent); }
+
+    hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 14px 0; }
+
+    /* Drop zone */
+    #drop-zone {
+      width: 100%; min-height: 90px;
+      border: 1.5px dashed rgba(255,255,255,0.2);
+      border-radius: 8px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+      padding: 12px; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: rgba(255,255,255,0.02); text-align: center;
+    }
+    #drop-zone:hover, #drop-zone.drag-over { border-color: var(--accent); background: rgba(230,232,0,0.04); }
+    #drop-zone svg { opacity: 0.45; }
+    #drop-zone p { font-size: 0.75rem; color: #777; line-height: 1.45; }
+    #drop-zone strong { color: #aaa; font-weight: 500; }
+    #file-input { display: none; }
+
+    #img-preview-wrap { display: none; position: relative; margin-top: 8px; }
+    #img-preview { width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); display: block; }
+    #img-clear {
+      position: absolute; top: 5px; right: 5px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.2);
+      color: #fff; font-size: 0.7rem; display: flex;
+      align-items: center; justify-content: center; cursor: pointer;
+    }
+    #img-clear:hover { background: #c00; }
+    #img-status { font-size: 0.72rem; margin-top: 5px; color: var(--accent); min-height: 14px; }
+
+    .radio-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .radio-group label {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.76rem; color: #bbb; cursor: pointer; margin-bottom: 0;
+    }
+    input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <div id="ui-panel">
-    <h1>Physarum Model</h1>
-    <p class="subtitle">Interactive Slime Mold Simulation</p>
+<div id="ui-panel">
+  <h1>Physarum Model</h1>
+  <p class="subtitle">Interactive Slime Mold Simulation</p>
 
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="text-tab">Text</button>
+    <button class="tab-btn" data-tab="image-tab">Image</button>
+  </div>
+
+  <div class="tab-pane active" id="text-tab">
     <div class="control-group">
-      <label for="textInput">Seed Text</label>
+      <label class="block-label" for="textInput">Seed Text</label>
       <input type="text" id="textInput" value="SLIME">
-    </div>
-
-    <div class="control-group">
-      <label>Decay (Fade)<span class="val" id="decayVal">0.96</span></label>
-      <input type="range" id="decaySlider" min="0.80" max="0.99" step="0.01" value="0.96">
-    </div>
-
-    <div class="control-group">
-      <label>Diffusion (Blur)<span class="val" id="diffVal">0.25</span></label>
-      <input type="range" id="diffSlider" min="0" max="1" step="0.05" value="0.25">
-    </div>
-
-    <div class="control-group">
-      <label>Sensor Angle<span class="val" id="saVal">45°</span></label>
-      <input type="range" id="saSlider" min="10" max="90" step="1" value="45">
-    </div>
-
-    <div class="control-group">
-      <label>Rotation Angle<span class="val" id="raVal">30°</span></label>
-      <input type="range" id="raSlider" min="5" max="90" step="1" value="30">
-    </div>
-    
-    <div class="control-group">
-      <label>Step Size<span class="val" id="stepVal">1.5</span></label>
-      <input type="range" id="stepSlider" min="0.1" max="5.0" step="0.1" value="1.5">
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-  <script>
-    // --- SIMULATION PARAMETERS ---
-    const AGENTS_PER_LETTER = 2000; 
-    const SENSOR_DIST = 10;
-    const HEX_COLOR = "#E6E800";
+  <div class="tab-pane" id="image-tab">
+    <div class="control-group">
+      <label class="block-label">Upload PNG or SVG</label>
+      <div id="drop-zone">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p><strong>Click to browse</strong> or drag &amp; drop<br>PNG or SVG</p>
+        <input type="file" id="file-input" accept=".png,.svg,image/png,image/svg+xml">
+      </div>
+      <div id="img-preview-wrap">
+        <img id="img-preview" alt="preview">
+        <div id="img-clear" title="Remove">✕</div>
+      </div>
+      <div id="img-status"></div>
+    </div>
+    <div class="control-group">
+      <label class="block-label">Spawn agents on</label>
+      <div class="radio-group">
+        <label><input type="radio" name="edge-mode" value="edge" checked> Edges only</label>
+        <label><input type="radio" name="edge-mode" value="fill"> Filled</label>
+      </div>
+    </div>
+  </div>
 
-    // Dynamic Variables linked to UI
-    let textSeed = "SLIME";
-    let decayFactor = 0.96;
-    let diffusionFactor = 0.25;
-    let sensorAngle = Math.PI / 4;
-    let rotationAngle = Math.PI / 6;
-    let stepSize = 1.5;
+  <hr class="div">
 
-    // Rendering internals
-    let trailMap, letterBuffer, trailColorObj;
-    let allAgents = [];
-    let fontSize = 120;
-    let fontFamily = "monospace";
+  <div class="control-group">
+    <label>Decay<span class="val" id="decayVal">0.96</span></label>
+    <input type="range" id="decaySlider" min="0.80" max="0.99" step="0.01" value="0.96">
+  </div>
+  <div class="control-group">
+    <label>Diffusion<span class="val" id="diffVal">0.25</span></label>
+    <input type="range" id="diffSlider" min="0" max="1" step="0.05" value="0.25">
+  </div>
+  <div class="control-group">
+    <label>Sensor Angle<span class="val" id="saVal">45°</span></label>
+    <input type="range" id="saSlider" min="10" max="90" step="1" value="45">
+  </div>
+  <div class="control-group">
+    <label>Rotation Angle<span class="val" id="raVal">30°</span></label>
+    <input type="range" id="raSlider" min="5" max="90" step="1" value="30">
+  </div>
+  <div class="control-group">
+    <label>Step Size<span class="val" id="stepVal">1.5</span></label>
+    <input type="range" id="stepSlider" min="0.1" max="5.0" step="0.1" value="1.5">
+  </div>
+</div>
 
-    // --- UI EVENT LISTENERS ---
-    document.getElementById("textInput").addEventListener("input", (e) => {
-      textSeed = e.target.value;
-      spawnAgents();
-    });
-    
-    function bindSlider(id, valId, variableSetter, suffix = "") {
-      const slider = document.getElementById(id);
-      const valDisp = document.getElementById(valId);
-      slider.addEventListener("input", (e) => {
-        valDisp.innerText = e.target.value + suffix;
-        variableSetter(parseFloat(e.target.value));
-      });
-    }
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+// ── Params ────────────────────────────────────────────────────────────────────
+const AGENTS_PER_LETTER = 2000;
+const SENSOR_DIST       = 10;
+const TRAIL_R = 230, TRAIL_G = 232, TRAIL_B = 0;   // E6E800 decomposed
 
-    bindSlider("decaySlider", "decayVal", v => decayFactor = v);
-    bindSlider("diffSlider", "diffVal", v => diffusionFactor = v);
-    bindSlider("stepSlider", "stepVal", v => stepSize = v);
-    bindSlider("saSlider", "saVal", v => sensorAngle = v * (Math.PI / 180), "°");
-    bindSlider("raSlider", "raVal", v => rotationAngle = v * (Math.PI / 180), "°");
+let textSeed        = "SLIME";
+let decayFactor     = 0.96;
+let diffusionFactor = 0.25;
+let sensorAngle     = Math.PI / 4;
+let rotationAngle   = Math.PI / 6;
+let stepSize        = 1.5;
 
-    // --- P5.JS SETUP ---
-    function setup() {
-      createCanvas(windowWidth, windowHeight);
-      pixelDensity(1); 
-      
-      trailMap = createGraphics(width, height);
-      trailMap.background(0);
-      
-      letterBuffer = createGraphics(width, height);
-      trailColorObj = color(HEX_COLOR);
-      trailColorObj.setAlpha(120);
+let seedMode      = "text";   // "text" | "image"
+let uploadedImage = null;     // HTMLImageElement
+let edgeMode      = "edge";   // "edge" | "fill"
 
-      spawnAgents();
-    }
+// p5 globals
+let trailMap;       // p5.Graphics — holds the pheromone field
+let letterBuf;      // p5.Graphics — used only to rasterise text
+let allAgents = [];
 
-    // --- P5.JS DRAW LOOP ---
-    function draw() {
-      trailMap.loadPixels();
-      let pixels = trailMap.pixels;
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+    seedMode = btn.dataset.tab === "image-tab" ? "image" : "text";
+    if (typeof spawnAgents === "function") spawnAgents();
+  });
+});
 
-      // Update agents
-      for (let agent of allAgents) {
-        agent.update(pixels);
-      }
+document.querySelectorAll('input[name="edge-mode"]').forEach(r => {
+  r.addEventListener("change", e => {
+    edgeMode = e.target.value;
+    if (seedMode === "image" && typeof spawnAgents === "function") spawnAgents();
+  });
+});
 
-      // Fast unrolled 3x3 box blur & decay
-      let w4 = width * 4;
-      for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          let idx = 4 * (x + y * width);
-          for (let c = 0; c < 3; c++) {
-            let sum = 
-              pixels[idx - 4 - w4 + c] + pixels[idx - w4 + c] + pixels[idx + 4 - w4 + c] +
-              pixels[idx - 4 + c]      + pixels[idx + c]      + pixels[idx + 4 + c] +
-              pixels[idx - 4 + w4 + c] + pixels[idx + w4 + c] + pixels[idx + 4 + w4 + c];
-              
-            let avg = sum / 9;
-            pixels[idx + c] = avg * diffusionFactor + pixels[idx + c] * (1 - diffusionFactor);
-          }
-          // Apply decay to alpha channel
-          pixels[idx + 3] *= decayFactor;
+document.getElementById("textInput").addEventListener("input", e => {
+  textSeed = e.target.value;
+  if (seedMode === "text" && typeof spawnAgents === "function") spawnAgents();
+});
+
+function bindSlider(id, valId, setter, suffix = "") {
+  const s = document.getElementById(id), v = document.getElementById(valId);
+  s.addEventListener("input", e => { v.innerText = e.target.value + suffix; setter(+e.target.value); });
+}
+bindSlider("decaySlider", "decayVal",  x => decayFactor     = x);
+bindSlider("diffSlider",  "diffVal",   x => diffusionFactor = x);
+bindSlider("stepSlider",  "stepVal",   x => stepSize        = x);
+bindSlider("saSlider",    "saVal",     x => sensorAngle     = x * Math.PI / 180, "°");
+bindSlider("raSlider",    "raVal",     x => rotationAngle   = x * Math.PI / 180, "°");
+
+// ── Image upload ──────────────────────────────────────────────────────────────
+const dropZone    = document.getElementById("drop-zone");
+const fileInput   = document.getElementById("file-input");
+const previewWrap = document.getElementById("img-preview-wrap");
+const previewImg  = document.getElementById("img-preview");
+const imgClear    = document.getElementById("img-clear");
+const imgStatus   = document.getElementById("img-status");
+
+dropZone.addEventListener("click",     () => fileInput.click());
+dropZone.addEventListener("dragover",  e  => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault(); dropZone.classList.remove("drag-over");
+  const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+});
+fileInput.addEventListener("change", e => { const f = e.target.files[0]; if (f) handleFile(f); });
+imgClear.addEventListener("click", e => {
+  e.stopPropagation();
+  uploadedImage = null;
+  previewWrap.style.display = "none";
+  previewImg.src = "";
+  imgStatus.textContent = "";
+  fileInput.value = "";
+  if (seedMode === "image" && typeof spawnAgents === "function") spawnAgents();
+});
+
+function handleFile(file) {
+  const ok = /\.(png|svg)$/i.test(file.name) ||
+             ["image/png","image/svg+xml"].includes(file.type);
+  if (!ok) { setStatus("Only PNG or SVG files are supported.", true); return; }
+  setStatus("Loading…");
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    previewImg.src = evt.target.result;
+    previewWrap.style.display = "block";
+
+    const img = new Image();
+    img.onload = () => {
+      uploadedImage = img;
+      setStatus(`${img.naturalWidth}×${img.naturalHeight}px — ready`);
+      // Auto-switch to image tab
+      seedMode = "image";
+      document.querySelectorAll(".tab-btn").forEach(b =>
+        b.classList.toggle("active", b.dataset.tab === "image-tab"));
+      document.querySelectorAll(".tab-pane").forEach(p =>
+        p.classList.toggle("active", p.id === "image-tab"));
+      if (typeof spawnAgents === "function") spawnAgents();
+    };
+    img.onerror = () => setStatus("Could not decode — try another file.", true);
+    img.src = evt.target.result;
+  };
+  reader.onerror = () => setStatus("File read error.", true);
+  reader.readAsDataURL(file);
+}
+
+function setStatus(msg, err = false) {
+  imgStatus.style.color = err ? "#f66" : "var(--accent)";
+  imgStatus.textContent = msg;
+}
+
+// ── p5 sketch ─────────────────────────────────────────────────────────────────
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(1);
+
+  // FIX: trailMap uses a plain 2D array, NOT a p5.Graphics with its own alpha.
+  // We manage the pheromone field manually as a Float32 array for R/G/B channels,
+  // then draw it to the main canvas each frame. This avoids ALL blending/alpha bugs.
+  initTrailBuffer();
+
+  letterBuf = createGraphics(width, height);
+  spawnAgents();
+}
+
+// ── Trail buffer (manual Float32, bypasses p5 blending entirely) ──────────────
+let trailR, trailG, trailB;   // Float32Array, one value per pixel
+
+function initTrailBuffer() {
+  const n = width * height;
+  trailR = new Float32Array(n);
+  trailG = new Float32Array(n);
+  trailB = new Float32Array(n);
+}
+
+function depositTrail(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  if (xi < 0 || xi >= width || yi < 0 || yi >= height) return;
+  const idx = xi + yi * width;
+  // Deposit full-strength colour into float buffer (no alpha ambiguity)
+  trailR[idx] = Math.min(255, trailR[idx] + TRAIL_R);
+  trailG[idx] = Math.min(255, trailG[idx] + TRAIL_G);
+  trailB[idx] = Math.min(255, trailB[idx] + TRAIL_B);
+}
+
+function senseTrail(sx, sy) {
+  const xi = Math.floor(sx), yi = Math.floor(sy);
+  if (xi < 0 || xi >= width || yi < 0 || yi >= height) return 0;
+  return trailR[xi + yi * width]; // sense on R channel (strongest signal)
+}
+
+function updateTrailBuffer() {
+  // 3×3 box blur + exponential decay applied to the float buffers
+  const w = width, h = height;
+  const newR = new Float32Array(w * h);
+  const newG = new Float32Array(w * h);
+  const newB = new Float32Array(w * h);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let sumR = 0, sumG = 0, sumB = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const i = (x + dx) + (y + dy) * w;
+          sumR += trailR[i]; sumG += trailG[i]; sumB += trailB[i];
         }
       }
-      trailMap.updatePixels();
-
-      // Deposit agent trails
-      for (let agent of allAgents) {
-        agent.deposit(trailMap);
-      }
-
-      background(0);
-      image(trailMap, 0, 0);
+      const idx = x + y * w;
+      const blurR = sumR / 9, blurG = sumG / 9, blurB = sumB / 9;
+      newR[idx] = (blurR * diffusionFactor + trailR[idx] * (1 - diffusionFactor)) * decayFactor;
+      newG[idx] = (blurG * diffusionFactor + trailG[idx] * (1 - diffusionFactor)) * decayFactor;
+      newB[idx] = (blurB * diffusionFactor + trailB[idx] * (1 - diffusionFactor)) * decayFactor;
     }
+  }
+  trailR = newR; trailG = newG; trailB = newB;
+}
 
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
-      trailMap = createGraphics(width, height);
-      trailMap.background(0);
-      letterBuffer = createGraphics(width, height);
-      spawnAgents();
-    }
+function renderTrailToCanvas() {
+  // Write float trail buffers directly into p5 pixel array
+  loadPixels();
+  const n = width * height;
+  for (let i = 0; i < n; i++) {
+    const pi = i * 4;
+    pixels[pi]     = trailR[i];
+    pixels[pi + 1] = trailG[i];
+    pixels[pi + 2] = trailB[i];
+    pixels[pi + 3] = 255;
+  }
+  updatePixels();
+}
 
-    // --- AGENT SPAWNING LOGIC ---
-    function spawnAgents() {
-      allAgents = [];
-      trailMap.background(0); // Clear trail
-      if (textSeed.trim() === "") return;
+// ── Draw loop ─────────────────────────────────────────────────────────────────
+function draw() {
+  // 1. Agents sense and move
+  for (const a of allAgents) a.update();
+  // 2. Agents deposit into float trail buffer
+  for (const a of allAgents) depositTrail(a.pos.x, a.pos.y);
+  // 3. Diffuse + decay float trail buffer
+  updateTrailBuffer();
+  // 4. Blit trail buffer to screen pixels
+  renderTrailToCanvas();
+}
 
-      letterBuffer.clear();
-      letterBuffer.textAlign(CENTER, CENTER);
-      letterBuffer.textFont(fontFamily);
-      letterBuffer.textSize(fontSize);
-      letterBuffer.fill(255);
-      letterBuffer.noStroke();
-      letterBuffer.text(textSeed, width / 2, height / 2);
-      letterBuffer.loadPixels();
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  initTrailBuffer();
+  letterBuf = createGraphics(width, height);
+  spawnAgents();
+}
 
-      let borderPixels = [];
-      
-      // Sample edge detection bounding box
-      let boundsW = textWidth(textSeed);
-      let startX = max(1, Math.floor((width - boundsW) / 2) - 20);
-      let endX = min(width - 1, startX + boundsW + 40);
-      let startY = max(1, Math.floor((height - fontSize) / 2) - 20);
-      let endY = min(height - 1, startY + fontSize + 40);
+// ── Spawn ─────────────────────────────────────────────────────────────────────
+function spawnAgents() {
+  allAgents = [];
+  initTrailBuffer(); // clear trail on respawn
 
-      for (let px = startX; px < endX; px++) {
-        for (let py = startY; py < endY; py++) {
-          let idx = 4 * (px + py * width);
-          if (letterBuffer.pixels[idx + 3] > 128) {
-            let isEdge = false;
-            for (let dx = -1; dx <= 1 && !isEdge; dx++) {
-              for (let dy = -1; dy <= 1 && !isEdge; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) isEdge = true;
-              }
-            }
-            if (isEdge) borderPixels.push({ x: px, y: py });
+  if (seedMode === "image") spawnFromImage();
+  else                      spawnFromText();
+}
+
+// ── Text spawn ────────────────────────────────────────────────────────────────
+function spawnFromText() {
+  if (!textSeed.trim()) return;
+
+  const FONT_SIZE = 120;
+
+  letterBuf.clear();
+  letterBuf.background(0, 0);           // fully transparent background
+  letterBuf.textAlign(CENTER, CENTER);
+  letterBuf.textFont("monospace");
+  letterBuf.textSize(FONT_SIZE);
+  letterBuf.fill(255);
+  letterBuf.noStroke();
+  letterBuf.text(textSeed, letterBuf.width / 2, letterBuf.height / 2);
+  letterBuf.loadPixels();
+
+  // FIX: measure text width using letterBuf (which has the font set),
+  // not the main canvas which has no font set.
+  // We scan the full buffer but limit to a sensible bounding box.
+  const W = letterBuf.width, H = letterBuf.height;
+
+  const edgePixels = [];
+  // Scan entire buffer (text is centred, so a ±200px margin is fine)
+  const cx = Math.floor(W / 2), cy = Math.floor(H / 2);
+  const halfW = Math.min(cx, Math.floor(textSeed.length * FONT_SIZE * 0.65));
+  const halfH = Math.floor(FONT_SIZE * 0.7);
+  const x0 = max(1, cx - halfW - 30), x1 = min(W - 2, cx + halfW + 30);
+  const y0 = max(1, cy - halfH - 20), y1 = min(H - 2, cy + halfH + 20);
+
+  for (let py = y0; py < y1; py++) {
+    for (let px = x0; px < x1; px++) {
+      const idx = 4 * (px + py * W);
+      if (letterBuf.pixels[idx + 3] < 128) continue; // transparent — skip
+      // Check if any neighbour is transparent (= edge pixel)
+      let isEdge = false;
+      outer: for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (letterBuf.pixels[4 * ((px+dx) + (py+dy) * W) + 3] < 128) {
+            isEdge = true; break outer;
           }
         }
       }
+      if (isEdge) edgePixels.push({ x: px, y: py });
+    }
+  }
 
-      if (borderPixels.length === 0) return;
+  if (!edgePixels.length) return;
 
-      // Spawn exactly AGENTS_PER_LETTER times the string length
-      let totalAgents = AGENTS_PER_LETTER * textSeed.length;
-      for (let i = 0; i < totalAgents; i++) {
-        let bp = random(borderPixels);
-        let jitter = p5.Vector.random2D().mult(random(0, 2));
-        allAgents.push(new Agent(bp.x + jitter.x, bp.y + jitter.y, random(TWO_PI)));
+  const total = AGENTS_PER_LETTER * max(1, textSeed.trim().length);
+  for (let i = 0; i < total; i++) {
+    const bp = edgePixels[Math.floor(Math.random() * edgePixels.length)];
+    allAgents.push(new Agent(bp.x + random(-1,1), bp.y + random(-1,1), random(TWO_PI)));
+  }
+}
+
+// ── Image spawn ───────────────────────────────────────────────────────────────
+function spawnFromImage() {
+  if (!uploadedImage) return;
+
+  const offC = document.createElement("canvas");
+  offC.width = width; offC.height = height;
+  const ctx = offC.getContext("2d");
+  ctx.clearRect(0, 0, width, height);
+
+  // Scale to fit, centred
+  const scale = Math.min(width * 0.85 / uploadedImage.naturalWidth,
+                         height * 0.85 / uploadedImage.naturalHeight);
+  const dw = uploadedImage.naturalWidth * scale;
+  const dh = uploadedImage.naturalHeight * scale;
+  ctx.drawImage(uploadedImage, (width - dw) / 2, (height - dh) / 2, dw, dh);
+
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const candidates = [];
+  const THRESH = 80;
+
+  const isInside = i => {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    return a > THRESH || (r + g + b) > 100;
+  };
+
+  if (edgeMode === "edge") {
+    for (let py = 1; py < height - 1; py++) {
+      for (let px = 1; px < width - 1; px++) {
+        if (!isInside(4*(px + py*width))) continue;
+        let edge = false;
+        outer: for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
+          if (!dx && !dy) continue;
+          if (!isInside(4*((px+dx)+(py+dy)*width))) { edge=true; break outer; }
+        }
+        if (edge) candidates.push({x:px, y:py});
       }
     }
+  } else {
+    for (let py = 0; py < height; py++)
+      for (let px = 0; px < width; px++)
+        if (isInside(4*(px+py*width))) candidates.push({x:px, y:py});
+  }
 
-    // --- AGENT CLASS ---
-    class Agent {
-      constructor(x, y, angle) {
-        this.pos = createVector(x, y);
-        this.angle = angle;
-      }
-      update(pixels) {
-        let sL = this.sense(this.angle - sensorAngle, pixels);
-        let sC = this.sense(this.angle, pixels);
-        let sR = this.sense(this.angle + sensorAngle, pixels);
-        
-        if (sL > sC && sL > sR) { this.angle -= rotationAngle; }
-        else if (sR > sC && sR > sL) { this.angle += rotationAngle; }
-        else { this.angle += random(-0.1, 0.1); }
-        
-        this.pos.x += cos(this.angle) * stepSize;
-        this.pos.y += sin(this.angle) * stepSize;
-        
-        this.pos.x = (this.pos.x + width) % width;
-        this.pos.y = (this.pos.y + height) % height;
-      }
-      sense(angle, pixels) {
-        let sx = Math.floor(this.pos.x + Math.cos(angle) * SENSOR_DIST);
-        let sy = Math.floor(this.pos.y + Math.sin(angle) * SENSOR_DIST);
-        if (sx < 0 || sx >= width || sy < 0 || sy >= height) return 0;
-        let idx = 4 * (sx + sy * width);
-        return pixels[idx]; 
-      }
-      deposit(pg) {
-        pg.noStroke();
-        pg.fill(trailColorObj);
-        pg.ellipse(this.pos.x, this.pos.y, 1.5, 1.5);
-      }
-    }
-  </script>
+  if (!candidates.length) { setStatus("No pixels found — try a clearer image.", true); return; }
+
+  const total = Math.min(candidates.length, AGENTS_PER_LETTER * 6);
+  for (let i = 0; i < total; i++) {
+    const bp = candidates[Math.floor(Math.random() * candidates.length)];
+    allAgents.push(new Agent(bp.x + random(-1,1), bp.y + random(-1,1), random(TWO_PI)));
+  }
+  setStatus(`${allAgents.length.toLocaleString()} agents spawned`);
+}
+
+// ── Agent ─────────────────────────────────────────────────────────────────────
+class Agent {
+  constructor(x, y, angle) {
+    this.pos   = createVector(x, y);
+    this.angle = angle;
+  }
+  update() {
+    const sL = this._sense(this.angle - sensorAngle);
+    const sC = this._sense(this.angle);
+    const sR = this._sense(this.angle + sensorAngle);
+
+    if      (sL > sC && sL > sR) this.angle -= rotationAngle;
+    else if (sR > sC && sR > sL) this.angle += rotationAngle;
+    else                          this.angle += random(-0.1, 0.1);
+
+    this.pos.x = (this.pos.x + cos(this.angle) * stepSize + width)  % width;
+    this.pos.y = (this.pos.y + sin(this.angle) * stepSize + height) % height;
+  }
+  _sense(angle) {
+    return senseTrail(
+      this.pos.x + Math.cos(angle) * SENSOR_DIST,
+      this.pos.y + Math.sin(angle) * SENSOR_DIST
+    );
+  }
+}
+</script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
