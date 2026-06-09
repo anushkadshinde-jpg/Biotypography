@@ -20,7 +20,6 @@
     }
     canvas { display: block; }
     
-    /* Sleek UI Panel Overlay */
     #ui-panel {
       position: absolute;
       top: 20px;
@@ -69,6 +68,29 @@
       outline: none;
       transition: border-color 0.2s;
     }
+    
+    input[type="file"] {
+      width: 100%;
+      font-size: 0.8rem;
+      color: #ccc;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+    
+    input[type="file"]::file-selector-button {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-right: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    input[type="file"]::file-selector-button:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
     input[type="text"]:focus { border-color: var(--accent); }
 
     input[type="range"] {
@@ -78,6 +100,12 @@
     }
     
     span.val { font-family: monospace; color: var(--accent); }
+    
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+      margin: 15px 0;
+    }
   </style>
 </head>
 <body>
@@ -90,6 +118,13 @@
       <label for="textInput">Seed Text</label>
       <input type="text" id="textInput" value="SLIME">
     </div>
+    
+    <div class="control-group">
+      <label for="imageUpload">...or Upload Image</label>
+      <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/svg+xml">
+    </div>
+
+    <div class="divider"></div>
 
     <div class="control-group">
       <label>Decay (Fade)<span class="val" id="decayVal">0.96</span></label>
@@ -119,20 +154,18 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <script>
-    // --- SIMULATION PARAMETERS ---
     const AGENTS_PER_LETTER = 2000; 
     const SENSOR_DIST = 10;
     const HEX_COLOR = "#E6E800";
 
-    // Dynamic Variables linked to UI
     let textSeed = "SLIME";
+    let imageSeed = null; 
     let decayFactor = 0.96;
     let diffusionFactor = 0.25;
     let sensorAngle = Math.PI / 4;
     let rotationAngle = Math.PI / 6;
     let stepSize = 1.5;
 
-    // Rendering internals
     let trailMap, letterBuffer, trailColorObj;
     let allAgents = [];
     let fontSize = 120;
@@ -141,7 +174,32 @@
     // --- UI EVENT LISTENERS ---
     document.getElementById("textInput").addEventListener("input", (e) => {
       textSeed = e.target.value;
+      imageSeed = null; 
+      document.getElementById("imageUpload").value = ""; 
       spawnAgents();
+    });
+    
+    document.getElementById("imageUpload").addEventListener("change", function(e) {
+      let file = e.target.files;
+      if (!file) return;
+      
+      let isJpeg = (file.type === "image/jpeg" || file.type === "image/jpg");
+      let reader = new FileReader();
+      
+      reader.onload = function(event) {
+        let img = new Image();
+        img.onload = function() {
+          let w = img.naturalWidth || img.width || 800;
+          let h = img.naturalHeight || img.height || 800;
+          
+          imageSeed = { element: img, width: w, height: h, isJpeg: isJpeg };
+          textSeed = ""; 
+          document.getElementById("textInput").value = ""; 
+          spawnAgents();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
     });
     
     function bindSlider(id, valId, variableSetter, suffix = "") {
@@ -159,32 +217,31 @@
     bindSlider("saSlider", "saVal", v => sensorAngle = v * (Math.PI / 180), "°");
     bindSlider("raSlider", "raVal", v => rotationAngle = v * (Math.PI / 180), "°");
 
-    // --- P5.JS SETUP ---
     function setup() {
       createCanvas(windowWidth, windowHeight);
       pixelDensity(1); 
       
       trailMap = createGraphics(width, height);
+      trailMap.pixelDensity(1); // CRITICAL RETINA FIX
       trailMap.background(0);
       
       letterBuffer = createGraphics(width, height);
+      letterBuffer.pixelDensity(1); // CRITICAL RETINA FIX
+      
       trailColorObj = color(HEX_COLOR);
       trailColorObj.setAlpha(120);
 
       spawnAgents();
     }
 
-    // --- P5.JS DRAW LOOP ---
     function draw() {
       trailMap.loadPixels();
       let pixels = trailMap.pixels;
 
-      // Update agents
       for (let agent of allAgents) {
         agent.update(pixels);
       }
 
-      // Fast unrolled 3x3 box blur & decay
       let w4 = width * 4;
       for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
@@ -198,13 +255,11 @@
             let avg = sum / 9;
             pixels[idx + c] = avg * diffusionFactor + pixels[idx + c] * (1 - diffusionFactor);
           }
-          // Apply decay to alpha channel
           pixels[idx + 3] *= decayFactor;
         }
       }
       trailMap.updatePixels();
 
-      // Deposit agent trails
       for (let agent of allAgents) {
         agent.deposit(trailMap);
       }
@@ -216,63 +271,74 @@
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
       trailMap = createGraphics(width, height);
+      trailMap.pixelDensity(1); // CRITICAL RETINA FIX
       trailMap.background(0);
+      
       letterBuffer = createGraphics(width, height);
+      letterBuffer.pixelDensity(1); // CRITICAL RETINA FIX
+      
       spawnAgents();
     }
 
-    // --- AGENT SPAWNING LOGIC ---
     function spawnAgents() {
       allAgents = [];
-      trailMap.background(0); // Clear trail
-      if (textSeed.trim() === "") return;
+      trailMap.background(0); 
+      letterBuffer.clear();   
 
-      letterBuffer.clear();
-      letterBuffer.textAlign(CENTER, CENTER);
-      letterBuffer.textFont(fontFamily);
-      letterBuffer.textSize(fontSize);
-      letterBuffer.fill(255);
-      letterBuffer.noStroke();
-      letterBuffer.text(textSeed, width / 2, height / 2);
+      if (imageSeed) {
+        let img = imageSeed.element;
+        let scale = Math.min((width * 0.6) / imageSeed.width, (height * 0.6) / imageSeed.height);
+        let w = imageSeed.width * scale;
+        let h = imageSeed.height * scale;
+        let x = (width - w) / 2;
+        let y = (height - h) / 2;
+        
+        letterBuffer.drawingContext.drawImage(img, x, y, w, h);
+        
+      } else if (textSeed.trim() !== "") {
+        letterBuffer.textAlign(CENTER, CENTER);
+        letterBuffer.textFont(fontFamily);
+        letterBuffer.textSize(fontSize);
+        letterBuffer.fill(255);
+        letterBuffer.noStroke();
+        letterBuffer.text(textSeed, width / 2, height / 2);
+      } else {
+        return; 
+      }
+
       letterBuffer.loadPixels();
-
-      let borderPixels = [];
+      let validPixels = [];
+      let isImageMode = imageSeed !== null;
+      let isJpeg = isImageMode ? imageSeed.isJpeg : false;
       
-      // Sample edge detection bounding box
-      let boundsW = textWidth(textSeed);
-      let startX = max(1, Math.floor((width - boundsW) / 2) - 20);
-      let endX = min(width - 1, startX + boundsW + 40);
-      let startY = max(1, Math.floor((height - fontSize) / 2) - 20);
-      let endY = min(height - 1, startY + fontSize + 40);
-
-      for (let px = startX; px < endX; px++) {
-        for (let py = startY; py < endY; py++) {
+      for (let px = 0; px < width; px += 2) {
+        for (let py = 0; py < height; py += 2) {
           let idx = 4 * (px + py * width);
-          if (letterBuffer.pixels[idx + 3] > 128) {
-            let isEdge = false;
-            for (let dx = -1; dx <= 1 && !isEdge; dx++) {
-              for (let dy = -1; dy <= 1 && !isEdge; dy++) {
-                if (dx === 0 && dy === 0) continue;
-                if (letterBuffer.pixels[4 * (px + dx + (py + dy) * width) + 3] < 128) isEdge = true;
-              }
+          let alpha = letterBuffer.pixels[idx + 3];
+          
+          if (alpha > 20) {
+            if (isJpeg) {
+              let r = letterBuffer.pixels[idx];
+              let g = letterBuffer.pixels[idx + 1];
+              let b = letterBuffer.pixels[idx + 2];
+              if (r > 240 && g > 240 && b > 240) continue; 
             }
-            if (isEdge) borderPixels.push({ x: px, y: py });
+            validPixels.push({ x: px, y: py });
           }
         }
       }
 
-      if (borderPixels.length === 0) return;
+      if (validPixels.length === 0) return;
 
-      // Spawn exactly AGENTS_PER_LETTER times the string length
-      let totalAgents = AGENTS_PER_LETTER * textSeed.length;
+      let totalAgents = imageSeed ? 12000 : (AGENTS_PER_LETTER * textSeed.length);
+      
       for (let i = 0; i < totalAgents; i++) {
-        let bp = random(borderPixels);
+        let bp = random(validPixels);
         let jitter = p5.Vector.random2D().mult(random(0, 2));
         allAgents.push(new Agent(bp.x + jitter.x, bp.y + jitter.y, random(TWO_PI)));
       }
     }
 
-    // --- AGENT CLASS ---
     class Agent {
       constructor(x, y, angle) {
         this.pos = createVector(x, y);
@@ -309,48 +375,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
