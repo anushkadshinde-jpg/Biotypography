@@ -183,28 +183,24 @@
       spawnAgents();
     });
     
-    // Custom Vanilla HTML5 Image Loader (Bypasses p5 bugs)
+    // Safely load file directly into p5.js memory
     document.getElementById("imageUpload").addEventListener("change", function(e) {
       let file = e.target.files;
       if (!file) return;
       
+      let isJpeg = (file.type === "image/jpeg" || file.type === "image/jpg");
       let reader = new FileReader();
+      
       reader.onload = function(event) {
-        let img = new Image();
-        img.onload = function() {
-          // Fallback sizes if an SVG is loaded without strict dimensions
-          let w = img.width || 800;
-          let h = img.height || 800;
-          
-          imageSeed = { element: img, width: w, height: h };
+        loadImage(event.target.result, function(img) {
+          imageSeed = { p5Image: img, isJpeg: isJpeg };
           textSeed = ""; 
           document.getElementById("textInput").value = ""; 
           spawnAgents();
-        };
-        img.onerror = function() {
-          alert("Error reading this image file. Try a standard PNG or JPG.");
-        };
-        img.src = event.target.result;
+        }, function(err) {
+          console.error(err);
+          alert("Error loading this image into the canvas.");
+        });
       };
       reader.readAsDataURL(file);
     });
@@ -290,14 +286,14 @@
 
       // 1. Draw to hidden buffer
       if (imageSeed) {
-        let scale = Math.min((width * 0.6) / imageSeed.width, (height * 0.6) / imageSeed.height);
-        let w = imageSeed.width * scale;
-        let h = imageSeed.height * scale;
+        let img = imageSeed.p5Image;
+        let scale = Math.min((width * 0.6) / img.width, (height * 0.6) / img.height);
+        let w = img.width * scale;
+        let h = img.height * scale;
         let x = (width - w) / 2;
         let y = (height - h) / 2;
         
-        // Draw using native canvas API to fix rendering sync issues
-        letterBuffer.drawingContext.drawImage(imageSeed.element, x, y, w, h);
+        letterBuffer.image(img, x, y, w, h);
         
       } else if (textSeed.trim() !== "") {
         letterBuffer.textAlign(CENTER, CENTER);
@@ -310,18 +306,20 @@
         return; 
       }
 
-      // 2. Scan for edges using a smarter algorithm
+      // 2. Scan for edges
       letterBuffer.loadPixels();
       let borderPixels = [];
       let isImageMode = imageSeed !== null;
+      let isJpeg = isImageMode ? imageSeed.isJpeg : false;
       
       // Helper: Determines if a pixel is part of the "shape"
       function isSolidPixel(index) {
         let alpha = letterBuffer.pixels[index + 3];
-        if (alpha < 128) return false; // Transparent is always background
+        // Forgiving threshold for anti-aliased logo edges
+        if (alpha < 20) return false; 
         
-        // If image uploaded, ignore pure white pixels (JPEG background fix)
-        if (isImageMode) {
+        // ONLY ignore pure white if the user uploaded a JPEG
+        if (isJpeg) {
           let r = letterBuffer.pixels[index];
           let g = letterBuffer.pixels[index + 1];
           let b = letterBuffer.pixels[index + 2];
@@ -351,10 +349,7 @@
         }
       }
 
-      if (borderPixels.length === 0) {
-        console.log("No edges found in image.");
-        return;
-      }
+      if (borderPixels.length === 0) return;
 
       // 3. Spawn Agents
       let totalAgents = imageSeed ? 8000 : (AGENTS_PER_LETTER * textSeed.length);
